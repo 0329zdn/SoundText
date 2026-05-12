@@ -52,9 +52,11 @@ class MusicToTxtApp:
         
         # 全局变量
         self.file_path = ""
+        self.file_paths = []  # 存储多个文件路径
         self.analyzer = AudioAnalyzer()
         self.is_processing = False
         self.last_saved_folder = os.path.expanduser("~/Documents")
+        self.process_mode = "single"  # "single" 或 "batch"
 
         # 创建主框架
         main_container = tk.Frame(root, bg='#f0f0f0')
@@ -97,6 +99,37 @@ class MusicToTxtApp:
         file_title = tk.Label(file_content, text="📁 文件选择", font=('Microsoft YaHei', 12, 'bold'), bg='white', fg='#2c3e50')
         file_title.pack(anchor='w', pady=(0, 10))
         
+        # 模式选择框架
+        mode_frame = tk.Frame(file_content, bg='white')
+        mode_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        tk.Label(mode_frame, text="处理模式:", font=('Microsoft YaHei', 10), bg='white', fg='#555').pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.mode_var = tk.StringVar(value="single")
+        single_radio = tk.Radiobutton(
+            mode_frame, 
+            text="单文件", 
+            variable=self.mode_var, 
+            value="single",
+            command=self.on_mode_change,
+            font=('Microsoft YaHei', 10),
+            bg='white',
+            activebackground='white'
+        )
+        single_radio.pack(side=tk.LEFT, padx=(0, 15))
+        
+        batch_radio = tk.Radiobutton(
+            mode_frame, 
+            text="批量处理", 
+            variable=self.mode_var, 
+            value="batch",
+            command=self.on_mode_change,
+            font=('Microsoft YaHei', 10),
+            bg='white',
+            activebackground='white'
+        )
+        batch_radio.pack(side=tk.LEFT)
+        
         file_input_frame = tk.Frame(file_content, bg='white')
         file_input_frame.pack(fill=tk.X)
         
@@ -116,7 +149,41 @@ class MusicToTxtApp:
             command=self.browse_file,
             style="Custom.TButton"
         )
-        browse_btn.pack(side=tk.RIGHT)
+        browse_btn.pack(side=tk.RIGHT, padx=(5, 0))
+        
+        self.batch_browse_btn = ttk.Button(
+            file_input_frame, 
+            text="📁 选择文件夹", 
+            command=self.browse_folder,
+            style="Custom.TButton"
+        )
+        self.batch_browse_btn.pack(side=tk.RIGHT)
+        self.batch_browse_btn.pack_forget()  # 初始隐藏
+        
+        # 批量文件列表框
+        self.file_listbox_frame = tk.Frame(file_content, bg='white')
+        self.file_listbox_frame.pack(fill=tk.X, pady=(10, 0))
+        self.file_listbox_frame.pack_forget()  # 初始隐藏
+        
+        tk.Label(self.file_listbox_frame, text="已选文件:", font=('Microsoft YaHei', 10), bg='white', fg='#555').pack(anchor='w', pady=(0, 5))
+        
+        listbox_container = tk.Frame(self.file_listbox_frame, bg='white', highlightbackground='#ddd', highlightthickness=1)
+        listbox_container.pack(fill=tk.X)
+        
+        self.file_listbox = tk.Listbox(
+            listbox_container,
+            font=('Microsoft YaHei', 9),
+            height=4,
+            bg='#fafafa',
+            fg='#333',
+            selectbackground='#d4e6f1',
+            activestyle='none'
+        )
+        self.file_listbox.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1, pady=1)
+        
+        listbox_scrollbar = ttk.Scrollbar(listbox_container, command=self.file_listbox.yview)
+        listbox_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.file_listbox.config(yscrollcommand=listbox_scrollbar.set)
 
         # 选项设置区域
         options_card = tk.Frame(main_container, bg='white', relief=tk.FLAT, bd=0)
@@ -383,6 +450,51 @@ class MusicToTxtApp:
             self.file_entry.insert(0, filename)
             self.log(f"已选择文件: {filename}")
 
+    def browse_folder(self):
+        folder = filedialog.askdirectory(title="选择文件夹")
+        if folder:
+            self.process_folder(folder)
+
+    def process_folder(self, folder_path):
+        """处理文件夹中的所有符合要求的文件"""
+        supported_extensions = {'.mp3', '.wav', '.m4a', '.flac', '.ogg', '.aac', '.wma', 
+                               '.mp4', '.avi', '.mov', '.wmv', '.mkv', '.flv', '.webm'}
+        
+        self.file_paths = []
+        for root, dirs, files in os.walk(folder_path):
+            for file in files:
+                ext = os.path.splitext(file)[1].lower()
+                if ext in supported_extensions:
+                    self.file_paths.append(os.path.join(root, file))
+        
+        if not self.file_paths:
+            messagebox.showwarning("提示", "该文件夹中没有找到支持的音视频文件")
+            return
+        
+        # 更新列表框
+        self.file_listbox.delete(0, tk.END)
+        for path in self.file_paths:
+            self.file_listbox.insert(tk.END, os.path.basename(path))
+        
+        self.file_entry.delete(0, tk.END)
+        self.file_entry.insert(0, f"{folder_path} (共 {len(self.file_paths)} 个文件)")
+        self.log(f"已从文件夹加载 {len(self.file_paths)} 个文件")
+
+    def on_mode_change(self):
+        """切换处理模式时的 UI 更新"""
+        if self.mode_var.get() == "batch":
+            self.batch_browse_btn.pack(side=tk.RIGHT, padx=(5, 0))
+            self.file_listbox_frame.pack(fill=tk.X, pady=(10, 0))
+            self.browse_btn.pack_forget()
+        else:
+            self.batch_browse_btn.pack_forget()
+            self.file_listbox_frame.pack_forget()
+            self.browse_btn.pack(side=tk.RIGHT, padx=(5, 0))
+            self.file_paths = []
+            self.file_listbox.delete(0, tk.END)
+            self.file_entry.delete(0, tk.END)
+
+
     def log(self, message):
         import datetime
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
@@ -395,9 +507,14 @@ class MusicToTxtApp:
         self.root.update()
 
     def start_transcription(self):
-        if not self.file_path:
-            messagebox.showerror("错误", "请选择要转写的文件")
-            return
+        if self.mode_var.get() == "batch":
+            if not self.file_paths:
+                messagebox.showerror("错误", "请选择要处理的文件夹")
+                return
+        else:
+            if not self.file_path:
+                messagebox.showerror("错误", "请选择要转写的文件")
+                return
 
         if self.is_processing:
             return
@@ -507,6 +624,41 @@ class MusicToTxtApp:
             self.start_btn.config(state=tk.NORMAL)
             self.cancel_btn.config(state=tk.DISABLED)
             self.is_processing = False
+
+    def _process_single_file(self, file_path):
+        """处理单个文件并返回转写结果"""
+        file_ext = Path(file_path).suffix.lower().lstrip('.')
+        video_extensions = {'mp4', 'avi', 'mov', 'wmv', 'mkv', 'flv', 'webm'}
+        audio_extensions = {'mp3', 'wav', 'm4a', 'flac', 'ogg', 'aac', 'wma'}
+
+        is_video = file_ext in video_extensions
+        is_audio = file_ext in audio_extensions
+
+        if not is_video and not is_audio:
+            self.log(f"⚠️ 跳过不支持的文件类型：{file_ext}")
+            return None
+
+        try:
+            if is_video:
+                result = self.analyzer.analyze_audio_from_video(
+                    video_path=file_path,
+                    language=self.language_var.get() if self.language_var.get() != "auto" else None,
+                    model_size=self.model_var.get(),
+                    local_model_path=str(Path(__file__).parent / self.model_var.get()) if self.model_var.get() in ["tiny", "base"] else None,
+                    device=self.device_var.get()
+                )
+            else:
+                result = self.analyzer.analyze_audio_file(
+                    audio_path=file_path,
+                    language=self.language_var.get() if self.language_var.get() != "auto" else None,
+                    model_size=self.model_var.get(),
+                    local_model_path=str(Path(__file__).parent / self.model_var.get()) if self.model_var.get() in ["tiny", "base"] else None,
+                    device=self.device_var.get()
+                )
+            return result.get('transcript', '')
+        except Exception as e:
+            self.log(f"❌ 处理失败 {os.path.basename(file_path)}: {str(e)}")
+            return None
 
     def cancel_transcription(self):
         self.is_processing = False
