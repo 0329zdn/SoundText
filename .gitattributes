@@ -1,0 +1,11 @@
+# 确保 bat 文件使用 CRLF 换行符
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Python 文件使用 LF
+*.py text eol=lf
+*.txt text eol=lf
+
+# 二进制文件
+*.dll binary
+*.exe binary
