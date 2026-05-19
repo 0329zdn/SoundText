@@ -143,13 +143,13 @@ class MusicToTxtApp:
         )
         self.file_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10), ipady=8)
 
-        browse_btn = ttk.Button(
+        self.browse_btn = ttk.Button(
             file_input_frame, 
             text="📂 浏览", 
             command=self.browse_file,
             style="Custom.TButton"
         )
-        browse_btn.pack(side=tk.RIGHT, padx=(5, 0))
+        self.browse_btn.pack(side=tk.RIGHT, padx=(5, 0))
         
         self.batch_browse_btn = ttk.Button(
             file_input_frame, 
@@ -540,85 +540,120 @@ class MusicToTxtApp:
         start_time = time.time()
         
         try:
-            self.log(f"开始转写: {self.file_path}")
-            self.log(f"语言: {self.language_var.get()}")
-            self.log(f"模型: {self.model_var.get()}")
-            self.log(f"设备: {self.device_var.get()}")
+            mode = self.mode_var.get()
+            
+            if mode == "batch":
+                # 批量处理模式
+                files_to_process = self.file_paths
+                self.log(f"批量处理模式：共 {len(files_to_process)} 个文件")
+            else:
+                # 单文件处理模式
+                files_to_process = [self.file_path]
+                self.log(f"开始转写：{self.file_path}")
+            
+            self.log(f"语言：{self.language_var.get()}")
+            self.log(f"模型：{self.model_var.get()}")
+            self.log(f"设备：{self.device_var.get()}")
             self.log("🔄 正在转写中...")
 
-            # 更新进度条
-            self.progress_var.set(10)
-            self.root.update()
+            total_files = len(files_to_process)
+            all_results = []
+            
+            for idx, file_path in enumerate(files_to_process):
+                if not self.is_processing:
+                    self.log("⚠️ 转写已取消")
+                    break
+                
+                current_file_start = time.time()
+                self.log(f"\n[{idx+1}/{total_files}] 处理：{os.path.basename(file_path)}")
+                
+                # 更新进度条
+                progress = int((idx / total_files) * 100)
+                self.progress_var.set(progress)
+                self.root.update()
 
-            # 分析文件类型
-            file_ext = Path(self.file_path).suffix.lower().lstrip('.')
-            video_extensions = {'mp4', 'avi', 'mov', 'wmv', 'mkv', 'flv', 'webm'}
-            audio_extensions = {'mp3', 'wav', 'm4a', 'flac', 'ogg', 'aac', 'wma'}
+                # 分析文件类型
+                file_ext = Path(file_path).suffix.lower().lstrip('.')
+                video_extensions = {'mp4', 'avi', 'mov', 'wmv', 'mkv', 'flv', 'webm'}
+                audio_extensions = {'mp3', 'wav', 'm4a', 'flac', 'ogg', 'aac', 'wma'}
 
-            is_video = file_ext in video_extensions
-            is_audio = file_ext in audio_extensions
+                is_video = file_ext in video_extensions
+                is_audio = file_ext in audio_extensions
 
-            if not is_video and not is_audio:
-                raise Exception("不支持的文件类型")
+                if not is_video and not is_audio:
+                    self.log(f"⚠️ 跳过不支持的文件类型：{file_ext}")
+                    continue
 
-            # 更新进度条
-            self.progress_var.set(30)
-            self.root.update()
+                # 执行转写
+                try:
+                    if is_video:
+                        self.log("  正在从视频中提取音频并转写中...")
+                        result = self.analyzer.analyze_audio_from_video(
+                            video_path=file_path,
+                            language=self.language_var.get() if self.language_var.get() != "auto" else None,
+                            model_size=self.model_var.get(),
+                            local_model_path=str(Path(__file__).parent / self.model_var.get()) if self.model_var.get() in ["tiny", "base"] else None,
+                            device=self.device_var.get()
+                        )
+                    else:
+                        self.log("  正在分析音频文件...")
+                        result = self.analyzer.analyze_audio_file(
+                            audio_path=file_path,
+                            language=self.language_var.get() if self.language_var.get() != "auto" else None,
+                            model_size=self.model_var.get(),
+                            local_model_path=str(Path(__file__).parent / self.model_var.get()) if self.model_var.get() in ["tiny", "base"] else None,
+                            device=self.device_var.get()
+                        )
 
-            # 执行转写
-            if is_video:
-                self.log("正在从视频中提取音频并转写中...")
-                result = self.analyzer.analyze_audio_from_video(
-                    video_path=self.file_path,
-                    language=self.language_var.get() if self.language_var.get() != "auto" else None,
-                    model_size=self.model_var.get(),
-                    local_model_path=str(Path(__file__).parent / self.model_var.get()) if self.model_var.get() in ["tiny", "base"] else None,
-                    device=self.device_var.get()
-                )
+                    transcript = result.get('transcript', '')
+                    all_results.append((file_path, transcript))
+                    
+                    elapsed = time.time() - current_file_start
+                    self.log(f"  ✅ 完成，耗时：{elapsed:.1f} 秒")
+                    
+                except Exception as e:
+                    self.log(f"  ❌ 处理失败：{str(e)}")
+            
+            # 显示所有结果
+            if all_results:
+                for file_path, transcript in all_results:
+                    if mode == "batch":
+                        self.result_text.insert(tk.END, f"\n{'='*50}\n")
+                        self.result_text.insert(tk.END, f"文件：{os.path.basename(file_path)}\n")
+                        self.result_text.insert(tk.END, f"{'='*50}\n")
+                    self.result_text.insert(tk.END, transcript)
+                    self.result_text.insert(tk.END, "\n")
+                
+                total_chars = sum(len(t) for _, t in all_results)
+                self.word_count_label.config(text=f"{total_chars} 字符")
+                
+                elapsed_time = time.time() - start_time
+                if elapsed_time < 60:
+                    time_str = f"{elapsed_time:.1f} 秒"
+                else:
+                    minutes = int(elapsed_time // 60)
+                    seconds = elapsed_time % 60
+                    time_str = f"{minutes} 分 {seconds:.1f} 秒"
+                
+                self.log(f"\n✅ 全部转写完成，共 {total_chars} 字符，总耗时：{time_str}")
+
+                # 更新进度条
+                self.progress_var.set(100)
+                self.update_status("转写完成", '#27ae60')
+
+                # 启用保存按钮
+                self.save_btn.config(state=tk.NORMAL)
+                self.open_folder_btn.config(state=tk.NORMAL)
+                self.last_saved_folder = os.path.expanduser("~/Documents")
             else:
-                self.log("正在分析音频文件...")
-                result = self.analyzer.analyze_audio_file(
-                    audio_path=self.file_path,
-                    language=self.language_var.get() if self.language_var.get() != "auto" else None,
-                    model_size=self.model_var.get(),
-                    local_model_path=str(Path(__file__).parent / self.model_var.get()) if self.model_var.get() in ["tiny", "base"] else None,
-                    device=self.device_var.get()
-                )
-
-            # 更新进度条
-            self.progress_var.set(80)
-            self.root.update()
-
-            # 显示结果
-            transcript = result.get('transcript', '')
-            self.result_text.insert(tk.END, transcript)
-            
-            word_count = len(transcript)
-            self.word_count_label.config(text=f"{word_count} 字符")
-            
-            elapsed_time = time.time() - start_time
-            if elapsed_time < 60:
-                time_str = f"{elapsed_time:.1f} 秒"
-            else:
-                minutes = int(elapsed_time // 60)
-                seconds = elapsed_time % 60
-                time_str = f"{minutes} 分 {seconds:.1f} 秒"
-            
-            self.log(f"✅ 转写完成，共 {word_count} 字符，耗时: {time_str}")
-
-            # 更新进度条
-            self.progress_var.set(100)
-            self.update_status("转写完成", '#27ae60')
-
-            # 启用保存按钮
-            self.save_btn.config(state=tk.NORMAL)
-            self.open_folder_btn.config(state=tk.NORMAL)
-            self.last_saved_folder = os.path.expanduser("~/Documents")
+                self.log("❌ 没有成功处理任何文件")
+                self.update_status("转写失败", '#e74c3c')
+                messagebox.showerror("错误", "转写失败：没有成功处理任何文件")
 
         except Exception as e:
-            self.log(f"❌ 错误: {str(e)}")
+            self.log(f"❌ 错误：{str(e)}")
             self.update_status("转写失败", '#e74c3c')
-            messagebox.showerror("错误", f"转写失败: {str(e)}")
+            messagebox.showerror("错误", f"转写失败：{str(e)}")
         finally:
             # 恢复按钮状态
             self.start_btn.config(state=tk.NORMAL)
