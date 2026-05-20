@@ -1,22 +1,42 @@
-# 忽略 Python 环境和依赖
-python/
-__pycache__/
+```
+# Compiled and build artifacts
 *.pyc
+__pycache__/
 
-# 忽略模型文件
-base/
-tiny/
-.cache/
+# Dependencies
+.venv/
+venv/
+node_modules/
 
-# 忽略二进制工具和库
-ffmpeg/
-*.dll
-*.exe
+# Logs and temp files
+*.log
+*.tmp
+*.swp
 
-# 忽略临时文件和结果
-temp/
-result/
+# Environment
+.env
+.env.local
+*.env.*
 
-# 忽略系统文件
+# Editors
+.vscode/
+.idea/
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
+
+# Python cache
+.mypy_cache/
+.pytest_cache/
+
+# Build directories
+dist/
+build/
+target/
+
+# OS specific
 .DS_Store
 Thumbs.db
+```
